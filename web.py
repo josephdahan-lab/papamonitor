@@ -146,6 +146,7 @@ HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>papaMonitor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%234fc3f7'/><text x='50' y='68' font-size='62' font-weight='bold' font-family='Arial,sans-serif' fill='white' text-anchor='middle'>P</text></svg>">
 <style>
   :root {
     --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;

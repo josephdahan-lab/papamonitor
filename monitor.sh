@@ -56,10 +56,15 @@ send_alert() {
 
     local hostname
     hostname=$(hostname)
-    printf "Subject: [monitor] %s on %s\n\n%s\n\nTimestamp: %s\nHost: %s\n" \
+    # Send email; tolerate failures (bad config, network down, etc) so a
+    # single hiccup doesn't kill the monitor loop under `set -e`.
+    if printf "Subject: [monitor] %s on %s\n\n%s\n\nTimestamp: %s\nHost: %s\n" \
         "$subject" "$hostname" "$body" "$(date)" "$hostname" \
-        | msmtp "$EMAIL_TO" 2>>"$LOGFILE" && \
+        | msmtp "$EMAIL_TO" 2>>"$LOGFILE"; then
         date +%s > "$cooldown_file"
+    else
+        echo "$(date '+%F %T') | WARNING: msmtp failed for alert $alert_key" >> "$LOGFILE"
+    fi
 }
 
 # --- main loop ---
@@ -131,9 +136,11 @@ while true; do
         send_alert "Network down — restarting WiFi" \
             "Router $ROUTER unreachable. Cycling wlan0." \
             "net_down"
-        ip link set wlan0 down
+        ip link set wlan0 down 2>>"$LOGFILE" || \
+            echo "$ts | WARNING: failed to bring wlan0 down" >> "$LOGFILE"
         sleep 5
-        ip link set wlan0 up
+        ip link set wlan0 up 2>>"$LOGFILE" || \
+            echo "$ts | WARNING: failed to bring wlan0 up" >> "$LOGFILE"
         sleep 15
     fi
 
