@@ -1,0 +1,16 @@
+[Unit]
+Description=papaMonitor System Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/joseph/monitor
+ExecStart=/bin/bash /home/joseph/monitor/monitor.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/joseph/monitor/monitor-service.log
+StandardError=append:/home/joseph/monitor/monitor-service.log
+
+[Install]
+WantedBy=multi-user.target

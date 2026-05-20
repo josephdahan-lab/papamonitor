@@ -1,0 +1,16 @@
+[Unit]
+Description=papaMonitor Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=joseph
+WorkingDirectory=/home/joseph/monitor
+ExecStart=/usr/bin/python3 /home/joseph/monitor/web.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/joseph/monitor/web.log
+StandardError=append:/home/joseph/monitor/web.log
+
+[Install]
+WantedBy=multi-user.target
