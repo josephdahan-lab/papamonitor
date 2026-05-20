@@ -1,4 +1,5 @@
 monitor.log
+monitor-service.log
 boots.log
 web.log
 state/
