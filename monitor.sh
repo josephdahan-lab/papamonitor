@@ -57,9 +57,11 @@ send_alert() {
     local hostname
     hostname=$(hostname)
     # Send email; tolerate failures (bad config, network down, etc) so a
-    # single hiccup doesn't kill the monitor loop under `set -e`.
-    if printf "Subject: [monitor] %s on %s\n\n%s\n\nTimestamp: %s\nHost: %s\n" \
-        "$subject" "$hostname" "$body" "$(date)" "$hostname" \
+    # single hiccup doesn't kill the monitor loop under `set -e`. The
+    # hostname goes in the subject + body so the recipient can tell which
+    # Pi the alert came from (the SMTP From stays as msmtprc's user).
+    if printf "Subject: [%s] %s\n\n%s\n\nHost:      %s\nTimestamp: %s\n" \
+        "$hostname" "$subject" "$body" "$hostname" "$(date)" \
         | msmtp "$EMAIL_TO" 2>>"$LOGFILE"; then
         date +%s > "$cooldown_file"
     else
