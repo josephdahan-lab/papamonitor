@@ -9,7 +9,22 @@ mkdir -p "$STATEDIR"
 # --- helpers ---
 
 get_temp() {
-    vcgencmd measure_temp 2>/dev/null | grep -oP '[0-9.]+'
+    # Pi: vcgencmd reports the SoC temp directly. x86: read the warmest
+    # thermal zone in /sys (covers Intel coretemp, AMD k10temp, etc).
+    if command -v vcgencmd >/dev/null 2>&1; then
+        vcgencmd measure_temp 2>/dev/null | grep -oP '[0-9.]+'
+        return
+    fi
+    local hottest=0
+    for z in /sys/class/thermal/thermal_zone*/temp; do
+        [ -r "$z" ] || continue
+        local milli
+        milli=$(cat "$z" 2>/dev/null) || continue
+        (( milli > hottest )) && hottest=$milli
+    done
+    if (( hottest > 0 )); then
+        awk -v m="$hottest" 'BEGIN{printf "%.1f", m/1000}'
+    fi
 }
 
 get_mem() {
@@ -28,8 +43,19 @@ get_disk() {
     df / | awk 'NR==2{gsub(/%/,"",$5); printf "%s %s %s", $5, $3, $4}'
 }
 
+get_wifi_iface() {
+    # Pick the first wireless interface (wlan0 on Pi, wlpXsY on x86, etc).
+    # Returns empty if there is none (ethernet-only host).
+    for iface in /sys/class/net/*; do
+        [ -d "$iface/wireless" ] && { basename "$iface"; return; }
+    done
+}
+
 get_wifi() {
-    iwconfig wlan0 2>/dev/null | awk -F= '/Signal level/{print $3+0}'
+    local iface
+    iface=$(get_wifi_iface)
+    [ -z "$iface" ] && return
+    iwconfig "$iface" 2>/dev/null | awk -F= '/Signal level/{print $3+0}'
 }
 
 send_alert() {
@@ -84,12 +110,14 @@ while true; do
     read -r disk_pct disk_used disk_avail <<< "$(get_disk)"
     wifi_signal=$(get_wifi)
     uptime_str=$(uptime -p)
+    wifi_part=""
+    [ -n "$wifi_signal" ] && wifi_part="wifi=${wifi_signal}dBm | "
 
-    printf "%s | temp=%s°C | cpu=%s%% load=%s | mem=%s/%sMB (%s%%) | disk=%s%% (avail %sK) | wifi=%sdBm | %s\n" \
+    printf "%s | temp=%s°C | cpu=%s%% load=%s | mem=%s/%sMB (%s%%) | disk=%s%% (avail %sK) | %s%s\n" \
         "$ts" "$temp" "$cpu_pct" "$cpu_load" \
         "$mem_used" "$mem_total" "$mem_pct" \
         "$disk_pct" "$disk_avail" \
-        "$wifi_signal" "$uptime_str" >> "$LOGFILE"
+        "$wifi_part" "$uptime_str" >> "$LOGFILE"
 
     # --- threshold checks ---
 
@@ -125,25 +153,36 @@ while true; do
             "cpu_warn"
     fi
 
-    if awk "BEGIN{exit !($wifi_signal <= $WIFI_WARN)}"; then
+    # Only check WiFi when we actually have a wireless interface and a reading.
+    if [ -n "$wifi_signal" ] && awk "BEGIN{exit !($wifi_signal <= $WIFI_WARN)}"; then
         send_alert "Weak WiFi signal ${wifi_signal}dBm" \
             "WiFi signal strength is ${wifi_signal}dBm (threshold: ${WIFI_WARN}dBm)." \
             "wifi_warn"
     fi
 
     # --- connectivity watchdog ---
+    # If the router stops answering and we have a wireless interface, cycle
+    # it. Ethernet-only hosts just get the alert without the cycle.
 
     if ! ping -c 2 -W 5 "$ROUTER" > /dev/null 2>&1; then
-        echo "$ts | WARNING: router unreachable, restarting wlan0" >> "$LOGFILE"
-        send_alert "Network down — restarting WiFi" \
-            "Router $ROUTER unreachable. Cycling wlan0." \
-            "net_down"
-        ip link set wlan0 down 2>>"$LOGFILE" || \
-            echo "$ts | WARNING: failed to bring wlan0 down" >> "$LOGFILE"
-        sleep 5
-        ip link set wlan0 up 2>>"$LOGFILE" || \
-            echo "$ts | WARNING: failed to bring wlan0 up" >> "$LOGFILE"
-        sleep 15
+        wifi_iface=$(get_wifi_iface)
+        if [ -n "$wifi_iface" ]; then
+            echo "$ts | WARNING: router unreachable, restarting $wifi_iface" >> "$LOGFILE"
+            send_alert "Network down — restarting WiFi" \
+                "Router $ROUTER unreachable. Cycling $wifi_iface." \
+                "net_down"
+            ip link set "$wifi_iface" down 2>>"$LOGFILE" || \
+                echo "$ts | WARNING: failed to bring $wifi_iface down" >> "$LOGFILE"
+            sleep 5
+            ip link set "$wifi_iface" up 2>>"$LOGFILE" || \
+                echo "$ts | WARNING: failed to bring $wifi_iface up" >> "$LOGFILE"
+            sleep 15
+        else
+            echo "$ts | WARNING: router unreachable (no wifi iface to cycle)" >> "$LOGFILE"
+            send_alert "Network down" \
+                "Router $ROUTER unreachable from $(hostname). No wireless interface — manual intervention needed." \
+                "net_down"
+        fi
     fi
 
     sleep "$INTERVAL"
