@@ -165,11 +165,12 @@ while true; do
 
     # --- connectivity watchdog ---
     # If the router stops answering and we have a wireless interface, cycle
-    # it. Ethernet-only hosts just get the alert without the cycle.
+    # it. Ethernet-only hosts and hosts that opt out (servers) just get the
+    # alert without the cycle.
 
     if ! ping -c 2 -W 5 "$ROUTER" > /dev/null 2>&1; then
         wifi_iface=$(get_wifi_iface)
-        if [ -n "$wifi_iface" ]; then
+        if [ -n "$wifi_iface" ] && [ "${WIFI_WATCHDOG_ENABLED:-true}" = "true" ]; then
             echo "$ts | WARNING: router unreachable, restarting $wifi_iface" >> "$LOGFILE"
             send_alert "Network down — restarting WiFi" \
                 "Router $ROUTER unreachable. Cycling $wifi_iface." \
