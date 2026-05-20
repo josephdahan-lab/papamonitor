@@ -55,7 +55,10 @@ get_wifi() {
     local iface
     iface=$(get_wifi_iface)
     [ -z "$iface" ] && return
-    iwconfig "$iface" 2>/dev/null | awk -F= '/Signal level/{print $3+0}'
+    # /proc/net/wireless is the kernel-native source; available everywhere
+    # without iwconfig (which is deprecated and missing from modern Ubuntu).
+    # Column 4 is the link quality / signal level in dBm.
+    awk -v i="$iface:" '$1 == i {print $4+0}' /proc/net/wireless 2>/dev/null
 }
 
 send_alert() {
