@@ -9,6 +9,103 @@ from datetime import datetime, timedelta
 PORT = 8088
 MONITOR_LOG = os.path.expanduser("~/monitor/monitor.log")
 BOOTS_LOG = os.path.expanduser("~/monitor/boots.log")
+CONFIG_FILE = os.path.expanduser("~/monitor/monitor.conf")
+
+# Whitelist of config keys editable from the web UI. Each entry is
+# (key, type, label, help). The type controls parsing and rendering.
+EDITABLE_CONFIG = [
+    ("EMAIL_ENABLED",     "bool", "Email alerts",     "Send email when a threshold is crossed."),
+    ("EMAIL_TO",          "str",  "Email recipient",  "Address that receives the alerts."),
+    ("EMAIL_COOLDOWN",    "int",  "Email cooldown (s)", "Seconds between repeated alerts for the same issue."),
+    ("TEMP_WARN",         "int",  "Temp warn (°C)",   "Warning threshold for CPU temperature."),
+    ("TEMP_CRIT",         "int",  "Temp critical (°C)", "Critical threshold for CPU temperature."),
+    ("MEM_WARN",          "int",  "Memory warn (%)",  "Warn when memory usage exceeds this percentage."),
+    ("DISK_WARN",         "int",  "Disk warn (%)",    "Warn when root disk usage exceeds this percentage."),
+    ("DISK_CRIT",         "int",  "Disk critical (%)", "Critical disk usage threshold."),
+    ("CPU_LOAD_WARN",     "float", "CPU load warn",   "Warn when 1-min load > cores × this multiplier."),
+    ("WIFI_WARN",         "int",  "WiFi warn (dBm)",  "Warn when signal weaker than this (more negative)."),
+    ("WIFI_WATCHDOG_ENABLED", "bool", "WiFi watchdog", "Cycle the WiFi interface when the router stops answering."),
+    ("INTERVAL",          "int",  "Poll interval (s)", "Seconds between monitor checks."),
+]
+
+def read_config():
+    """Parse monitor.conf into a {key: value} dict. Unknown lines ignored."""
+    cfg = {}
+    if not os.path.exists(CONFIG_FILE):
+        return cfg
+    with open(CONFIG_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            val = val.split("#", 1)[0].strip()
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                val = val[1:-1]
+            cfg[key.strip()] = val
+    return cfg
+
+def write_config(updates):
+    """Rewrite monitor.conf, replacing only whitelisted keys. Preserves all
+    other lines/comments verbatim so user formatting survives a save."""
+    allowed = {k: t for k, t, _, _ in EDITABLE_CONFIG}
+    # Coerce + validate types before touching disk.
+    clean = {}
+    for k, raw in updates.items():
+        if k not in allowed:
+            continue
+        t = allowed[k]
+        try:
+            if t == "bool":
+                clean[k] = "true" if str(raw).lower() in ("true", "1", "yes", "on") else "false"
+            elif t == "int":
+                clean[k] = str(int(raw))
+            elif t == "float":
+                clean[k] = str(float(raw))
+            else:
+                clean[k] = str(raw).replace('"', '')
+        except Exception:
+            continue
+
+    if not os.path.exists(CONFIG_FILE):
+        return False
+
+    with open(CONFIG_FILE) as f:
+        lines = f.readlines()
+
+    seen = set()
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            out.append(line)
+            continue
+        key = stripped.split("=", 1)[0].strip()
+        if key in clean:
+            val = clean[key]
+            # Quote strings, leave bool/numeric bare to match existing style.
+            if allowed[key] == "str":
+                out.append(f'{key}="{val}"\n')
+            else:
+                out.append(f'{key}={val}\n')
+            seen.add(key)
+        else:
+            out.append(line)
+
+    # Append any newly-set keys that weren't already in the file.
+    for k, v in clean.items():
+        if k in seen:
+            continue
+        if allowed[k] == "str":
+            out.append(f'{k}="{v}"\n')
+        else:
+            out.append(f'{k}={v}\n')
+
+    tmp = CONFIG_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        f.writelines(out)
+    os.replace(tmp, CONFIG_FILE)
+    return True
 
 def run_cmd(cmd):
     try:
@@ -270,6 +367,18 @@ HTML = """<!DOCTYPE html>
     <div id="warnings"></div>
   </div>
 
+  <div class="card full-width">
+    <h2>Settings</h2>
+    <div id="settings-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;"></div>
+    <div style="margin-top:14px; display:flex; align-items:center; gap:12px;">
+      <button id="settings-save" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:6px; font-weight:600; cursor:pointer; font-family:inherit;">Save</button>
+      <span id="settings-status" style="color:var(--dim); font-size:12px;"></span>
+    </div>
+    <p style="color:var(--dim); font-size:11px; margin-top:10px;">
+      Changes take effect on the next monitor tick (within ~60s). No service restart needed.
+    </p>
+  </div>
+
 </div>
 
 <script>
@@ -447,6 +556,78 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 30000);
+
+// ── Settings form ────────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/config');
+    const d = await res.json();
+    const form = document.getElementById('settings-form');
+    let html = '';
+    for (const f of d.schema) {
+      const v = d.values[f.key] ?? '';
+      let input;
+      if (f.type === 'bool') {
+        const checked = (String(v).toLowerCase() === 'true') ? 'checked' : '';
+        input = '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+          '<input type="checkbox" data-key="' + f.key + '" data-type="bool" ' + checked + ' style="width:18px;height:18px;cursor:pointer;">' +
+          '<span style="font-size:13px;">' + (checked ? 'Enabled' : 'Disabled') + '</span></label>';
+      } else {
+        const t = (f.type === 'int' || f.type === 'float') ? 'number' : 'text';
+        const step = f.type === 'float' ? '0.01' : '1';
+        input = '<input type="' + t + '" ' + (t==='number'?'step="'+step+'"':'') +
+          ' data-key="' + f.key + '" data-type="' + f.type + '" value="' + String(v).replace(/"/g,'&quot;') +
+          '" style="background:#222;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box;">';
+      }
+      html += '<div style="display:flex;flex-direction:column;gap:4px;">' +
+        '<label style="color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">' + f.label + '</label>' +
+        input +
+        '<span style="color:var(--dim);font-size:10px;">' + f.help + '</span>' +
+        '</div>';
+    }
+    form.innerHTML = html;
+    // Live-update the bool label as user toggles
+    form.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        cb.nextElementSibling.textContent = cb.checked ? 'Enabled' : 'Disabled';
+      });
+    });
+  } catch(e) {
+    document.getElementById('settings-status').textContent = 'Failed to load: ' + e.message;
+  }
+}
+
+document.getElementById('settings-save').addEventListener('click', async () => {
+  const status = document.getElementById('settings-status');
+  status.textContent = 'Saving…';
+  const payload = {};
+  document.querySelectorAll('#settings-form [data-key]').forEach(el => {
+    const k = el.dataset.key;
+    if (el.dataset.type === 'bool') payload[k] = el.checked;
+    else payload[k] = el.value;
+  });
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await res.json();
+    if (d.saved) {
+      status.textContent = 'Saved — effective on next monitor tick';
+      status.style.color = 'var(--green)';
+      setTimeout(() => { status.style.color = 'var(--dim)'; status.textContent = ''; }, 5000);
+    } else {
+      status.textContent = 'Error: ' + (d.error || 'unknown');
+      status.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    status.textContent = 'Save failed: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+});
+
+loadSettings();
 </script>
 </body>
 </html>"""
@@ -456,24 +637,57 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def _json(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/api/stats":
-            data = {
+            self._json(200, {
                 "live": get_live_stats(),
                 "history": get_log_history(120),
                 "old_history": get_old_log_history(1500),
                 "boots": get_boots(),
                 "warnings": get_warnings(),
-            }
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode())
+            })
+        elif self.path == "/api/config":
+            cfg = read_config()
+            self._json(200, {
+                "schema": [{"key": k, "type": t, "label": lbl, "help": h}
+                           for k, t, lbl, h in EDITABLE_CONFIG],
+                "values": {k: cfg.get(k, "") for k, _, _, _ in EDITABLE_CONFIG},
+            })
         elif self.path == "/" or self.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(HTML.encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == "/api/config":
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            try:
+                body = json.loads(self.rfile.read(length).decode() or "{}")
+            except Exception:
+                self._json(400, {"error": "invalid JSON"})
+                return
+            ok = write_config(body if isinstance(body, dict) else {})
+            if not ok:
+                self._json(500, {"error": "config file missing"})
+                return
+            # Return the updated values so the UI can reconcile immediately.
+            cfg = read_config()
+            self._json(200, {
+                "saved": True,
+                "values": {k: cfg.get(k, "") for k, _, _, _ in EDITABLE_CONFIG},
+            })
         else:
             self.send_response(404)
             self.end_headers()

@@ -105,6 +105,9 @@ echo "$(date '+%F %T') | monitor started (pid $$)" >> "$LOGFILE"
 NUM_CORES=$(nproc)
 
 while true; do
+    # Re-source the config every loop so changes from the web UI take
+    # effect on the next iteration without needing a service restart.
+    source "$SCRIPT_DIR/monitor.conf"
     ts=$(date '+%F %T')
     temp=$(get_temp)
     read -r mem_used mem_total mem_pct <<< "$(get_mem)"
