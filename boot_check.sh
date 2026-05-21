@@ -16,13 +16,15 @@ classify_boot() {
     local classification="UNKNOWN"
     local detail=""
 
-    # Check if there's a previous boot to compare against
+    # Check if there's a previous boot to compare against.
+    # `journalctl --list-boots` includes a 2-line header — count only
+    # data rows that start with an index number.
     local num_boots
-    num_boots=$(journalctl --list-boots 2>/dev/null | wc -l)
+    num_boots=$(journalctl --list-boots --no-pager 2>/dev/null | awk '/^ *-?[0-9]+ /' | wc -l)
 
     if (( num_boots < 2 )); then
         classification="FIRST_BOOT"
-        detail="No previous boot journal available"
+        detail="No previous boot journal available (persistent journal may be disabled)"
         printf "%s | BOOT: %s — %s\n" "$ts" "$classification" "$detail"
         return
     fi
@@ -66,9 +68,13 @@ case "$result" in
     *KERNEL_CRASH*|*UNEXPECTED*|*POWER_ISSUE*)
         if [[ "$EMAIL_ENABLED" == "true" ]]; then
             hostname=$(hostname)
-            printf "Subject: [monitor] Unexpected reboot on %s\n\n%s\n\nPrevious boot journal (last 30 lines):\n%s\n" \
+            # Match the alert subject format used by monitor.sh:
+            # "[<hostname>] <description>" — host front-and-center for filtering.
+            if ! printf "Subject: [%s] Unexpected reboot\n\n%s\n\nPrevious boot journal (last 30 lines):\n%s\n" \
                 "$hostname" "$result" "$(journalctl -b -1 -n 30 --no-pager 2>/dev/null)" \
-                | msmtp "$EMAIL_TO" 2>>"$LOGFILE"
+                | msmtp "$EMAIL_TO" 2>>"$LOGFILE"; then
+                echo "$ts | WARNING: boot_check msmtp failed" >> "$LOGFILE"
+            fi
         fi
         ;;
 esac
