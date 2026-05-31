@@ -7,9 +7,10 @@ import re
 from datetime import datetime, timedelta
 
 PORT = 8088
-MONITOR_LOG = os.path.expanduser("~/monitor/monitor.log")
-BOOTS_LOG = os.path.expanduser("~/monitor/boots.log")
-CONFIG_FILE = os.path.expanduser("~/monitor/monitor.conf")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MONITOR_LOG = os.path.join(SCRIPT_DIR, "monitor.log")
+BOOTS_LOG = os.path.join(SCRIPT_DIR, "boots.log")
+CONFIG_FILE = os.path.join(SCRIPT_DIR, "monitor.conf")
 
 # Whitelist of config keys editable from the web UI. Each entry is
 # (key, type, label, help). The type controls parsing and rendering.
