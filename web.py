@@ -639,12 +639,20 @@ async function refresh() {
 
     // services
     let shtml = '';
+    const host = location.hostname;
     for (const s of d.services) {
       let badge;
       if (s.status === 'up') badge = '<span class="badge badge-ok">UP</span>';
       else if (s.status === 'n/a') badge = '<span class="badge badge-na">N/A</span>';
       else badge = '<span class="badge badge-crit">DOWN</span>';
-      shtml += '<tr><td style="font-weight:600;">' + s.name + '</td><td>' + s.port + '</td><td>' + badge + '</td><td>' + (s.pid || '—') + '</td><td>' + (s.uptime || '—') + '</td></tr>';
+      let nameCell;
+      if (s.status === 'up') {
+        const url = 'http://' + host + (s.port === 80 ? '' : ':' + s.port) + '/';
+        nameCell = '<a href="' + url + '" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">' + s.name + '</a>';
+      } else {
+        nameCell = '<span style="font-weight:600;">' + s.name + '</span>';
+      }
+      shtml += '<tr><td>' + nameCell + '</td><td>' + s.port + '</td><td>' + badge + '</td><td>' + (s.pid || '—') + '</td><td>' + (s.uptime || '—') + '</td></tr>';
     }
     document.getElementById('services').innerHTML = shtml;
 
