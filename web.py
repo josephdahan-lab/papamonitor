@@ -227,12 +227,12 @@ def get_boots():
     return {"log": boots, "journalctl": jctl}
 
 WATCHED_SERVICES = [
-    {"name": "Jellyfin",    "port": 8096, "container": "jellyfin"},
-    {"name": "Immich",      "port": 2283, "container": "immich_server"},
-    {"name": "PapaBackup",  "port": 9999},
+    {"name": "Jellyfin",    "port": 8096, "container": "jellyfin",      "install_path": os.path.expanduser("~/jellyfin")},
+    {"name": "Immich",      "port": 2283, "container": "immich_server", "install_path": os.path.expanduser("~/immich-app")},
+    {"name": "PapaBackup",  "port": 9999, "install_path": os.path.expanduser("~/papabackup")},
     {"name": "PapaMonitor", "port": 8088, "self": True},
-    {"name": "PapaStuff",   "port": 80},
-    {"name": "PapaFrame",   "port": 8000},
+    {"name": "PapaStuff",   "port": 80,   "install_path": os.path.expanduser("~/papastuff")},
+    {"name": "PapaFrame",   "port": 8000, "install_path": os.path.expanduser("~/papaframe")},
 ]
 
 def format_uptime(secs):
@@ -256,6 +256,14 @@ def get_service_status():
             entry["pid"] = pid
             uptime_raw = run_cmd(f"ps -o etimes= -p {pid} 2>/dev/null").strip()
             entry["uptime"] = format_uptime(int(uptime_raw)) if uptime_raw else "—"
+            services.append(entry)
+            continue
+
+        install_path = svc.get("install_path")
+        if install_path and not os.path.exists(install_path):
+            entry["status"] = "n/a"
+            entry["uptime"] = "—"
+            entry["pid"] = "—"
             services.append(entry)
             continue
 
@@ -294,8 +302,6 @@ def get_service_status():
                     entry["uptime"] = "unknown"
                 entry["pid"] = pid
             else:
-                if entry["status"] == "down":
-                    entry["status"] = "n/a"
                 entry["uptime"] = "—"
                 entry["pid"] = "—"
 
