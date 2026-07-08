@@ -161,6 +161,34 @@ sudo rm /etc/logrotate.d/pi-monitor
 sudo systemctl daemon-reload
 ```
 
+## Monitored Services
+
+The dashboard tracks status and uptime for these services:
+
+| Service | Port | Type |
+|---|---|---|
+| Jellyfin | 8096 | Docker |
+| Immich | 2283 | Docker |
+| PapaBackup | 9999 | Python |
+| PapaMonitor | 8088 | Python |
+| PapaStuff | 80 | Node.js |
+| PapaFrame | 8000 | N/A (not on all hosts) |
+
+## Service Watchdog
+
+The watchdog (`watchdog.sh`) runs every 2 minutes via systemd timer and on each monitor loop. For each service it:
+
+1. Checks HTTP response on the service port
+2. If down, attempts restart (up to 2 retries)
+3. Sends email alert if recovery fails
+
+Install the timer:
+```bash
+sudo cp papawatchdog.service papawatchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now papawatchdog.timer
+```
+
 ## File structure
 
 ```
@@ -169,9 +197,26 @@ papamonitor/
 ├── monitor.sh                    # Main monitor loop
 ├── monitor.conf                  # Thresholds and settings
 ├── web.py                        # Web dashboard server
+├── watchdog.sh                   # Service health checker with auto-restart
+├── papawatchdog.service          # Watchdog systemd unit
+├── papawatchdog.timer            # Watchdog 2-minute timer
 ├── boot_check.sh                 # Boot classifier
 ├── logrotate.conf                # Log rotation template
 ├── papamonitor.service           # systemd unit templates
 ├── papamonitor-web.service       #   (paths patched by setup.sh)
 └── papamonitor-boot-check.service
 ```
+
+## Changelog
+
+### v2.0 (2026-07-08)
+- Added service status and uptime monitoring to the dashboard
+- Added service watchdog with automatic restart and email alerts
+- Added PapaFrame service tracking (N/A for hosts without it)
+- Docker services show container uptime via `docker inspect`
+- Native services show PID and process uptime
+- Watchdog runs every 2 minutes via systemd timer
+- Services that aren't installed show as N/A instead of DOWN
+
+### v1.0
+- Initial release with system monitoring, charts, boot history, alerts, and web-editable settings

@@ -226,6 +226,83 @@ def get_boots():
     jctl = run_cmd("journalctl --list-boots --no-pager 2>/dev/null")
     return {"log": boots, "journalctl": jctl}
 
+WATCHED_SERVICES = [
+    {"name": "Jellyfin",    "port": 8096, "container": "jellyfin"},
+    {"name": "Immich",      "port": 2283, "container": "immich_server"},
+    {"name": "PapaBackup",  "port": 9999},
+    {"name": "PapaMonitor", "port": 8088, "self": True},
+    {"name": "PapaStuff",   "port": 80},
+    {"name": "PapaFrame",   "port": 8000},
+]
+
+def format_uptime(secs):
+    days = secs // 86400
+    hours = (secs % 86400) // 3600
+    mins = (secs % 3600) // 60
+    if days > 0:
+        return f"{days}d {hours}h {mins}m"
+    if hours > 0:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+def get_service_status():
+    import urllib.request
+    services = []
+    for svc in WATCHED_SERVICES:
+        entry = {"name": svc["name"], "port": svc["port"]}
+        if svc.get("self"):
+            entry["status"] = "up"
+            pid = str(os.getpid())
+            entry["pid"] = pid
+            uptime_raw = run_cmd(f"ps -o etimes= -p {pid} 2>/dev/null").strip()
+            entry["uptime"] = format_uptime(int(uptime_raw)) if uptime_raw else "—"
+            services.append(entry)
+            continue
+
+        try:
+            req = urllib.request.urlopen(f"http://localhost:{svc['port']}/", timeout=5)
+            entry["status"] = "up"
+        except Exception:
+            entry["status"] = "down"
+
+        container = svc.get("container")
+        if container:
+            uptime_raw = run_cmd(
+                "sudo docker inspect -f '{{.State.StartedAt}}' " + container + " 2>/dev/null"
+            ).strip()
+            if uptime_raw and uptime_raw != "":
+                try:
+                    started = datetime.strptime(uptime_raw[:19], "%Y-%m-%dT%H:%M:%S")
+                    delta = datetime.utcnow() - started
+                    entry["uptime"] = format_uptime(int(delta.total_seconds()))
+                    entry["pid"] = container
+                except Exception:
+                    entry["uptime"] = "—"
+                    entry["pid"] = container
+            else:
+                entry["uptime"] = "—"
+                entry["pid"] = "—"
+        else:
+            pid = run_cmd(
+                f"sudo ss -tlnp sport = :{svc['port']} | grep -oP 'pid=\\K[0-9]+' | head -1"
+            )
+            if pid:
+                uptime_raw = run_cmd(f"ps -o etimes= -p {pid} 2>/dev/null").strip()
+                if uptime_raw:
+                    entry["uptime"] = format_uptime(int(uptime_raw))
+                else:
+                    entry["uptime"] = "unknown"
+                entry["pid"] = pid
+            else:
+                if entry["status"] == "down":
+                    entry["status"] = "n/a"
+                entry["uptime"] = "—"
+                entry["pid"] = "—"
+
+        services.append(entry)
+    return services
+
+
 def get_warnings(lines=200):
     warnings = []
     try:
@@ -286,6 +363,7 @@ HTML = """<!DOCTYPE html>
   .badge-ok { background: #1b3a1b; color: var(--green); }
   .badge-warn { background: #3a3a1b; color: var(--yellow); }
   .badge-crit { background: #3a1b1b; color: var(--red); }
+  .badge-na { background: #2a2a2a; color: #666; }
   @media (max-width: 600px) { .grid { padding: 8px; gap: 8px; } .header { padding: 12px; } }
 </style>
 </head>
@@ -333,6 +411,14 @@ HTML = """<!DOCTYPE html>
     <div class="stat-row"><span class="stat-label">WiFi ESSID</span><span class="stat-value" id="s-essid"></span></div>
     <div class="stat-row"><span class="stat-label">Signal</span><span class="stat-value" id="s-wifi"></span></div>
     <div class="bar-container"><div class="bar" id="bar-wifi"></div></div>
+  </div>
+
+  <div class="card full-width">
+    <h2>Services</h2>
+    <table>
+      <thead><tr><th>Service</th><th>Port</th><th>Status</th><th>PID</th><th>Uptime</th></tr></thead>
+      <tbody id="services"></tbody>
+    </table>
   </div>
 
   <div class="card full-width">
@@ -545,6 +631,17 @@ async function refresh() {
     if (d.boots.journalctl) { bhtml += '<pre style="color:#888;margin-top:8px;font-size:11px">' + d.boots.journalctl + '</pre>'; }
     document.getElementById('boots').innerHTML = bhtml || '<span style="color:#666">No boot records yet</span>';
 
+    // services
+    let shtml = '';
+    for (const s of d.services) {
+      let badge;
+      if (s.status === 'up') badge = '<span class="badge badge-ok">UP</span>';
+      else if (s.status === 'n/a') badge = '<span class="badge badge-na">N/A</span>';
+      else badge = '<span class="badge badge-crit">DOWN</span>';
+      shtml += '<tr><td style="font-weight:600;">' + s.name + '</td><td>' + s.port + '</td><td>' + badge + '</td><td>' + (s.pid || '—') + '</td><td>' + (s.uptime || '—') + '</td></tr>';
+    }
+    document.getElementById('services').innerHTML = shtml;
+
     // warnings
     let whtml = '';
     for (const w of d.warnings) {
@@ -650,6 +747,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/api/stats":
             self._json(200, {
                 "live": get_live_stats(),
+                "services": get_service_status(),
                 "history": get_log_history(120),
                 "old_history": get_old_log_history(1500),
                 "boots": get_boots(),

@@ -166,6 +166,9 @@ while true; do
             "wifi_warn"
     fi
 
+    # --- service watchdog ---
+    "$SCRIPT_DIR/watchdog.sh" &
+
     # --- connectivity watchdog ---
     # If the router stops answering and we have a wireless interface, cycle
     # it. Ethernet-only hosts and hosts that opt out (servers) just get the

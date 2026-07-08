@@ -1,0 +1,8 @@
+[Unit]
+Description=PapaWatchdog - Service health checker
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=joseph
+ExecStart=/home/joseph/monitor/watchdog.sh
