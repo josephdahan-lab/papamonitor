@@ -172,6 +172,7 @@ The dashboard tracks status and uptime for these services:
 | PapaBackup | 9999 | Python |
 | PapaMonitor | 8088 | Python |
 | PapaStuff | 80 | Node.js |
+| PapaStreams | 3000 | Node.js |
 | PapaFrame | 8000 | N/A (not on all hosts) |
 
 ## Service Watchdog
@@ -208,6 +209,11 @@ papamonitor/
 ```
 
 ## Changelog
+
+### v2.1 (2026-07-09)
+- Added PapaStreams service monitoring (port 3000)
+- Service names are clickable links to their web UI
+- Services show N/A based on install path detection, not port status
 
 ### v2.0 (2026-07-08)
 - Added service status and uptime monitoring to the dashboard

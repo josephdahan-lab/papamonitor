@@ -233,6 +233,7 @@ WATCHED_SERVICES = [
     {"name": "PapaMonitor", "port": 8088, "self": True},
     {"name": "PapaStuff",   "port": 80,   "install_path": os.path.expanduser("~/papastuff")},
     {"name": "PapaFrame",   "port": 8000, "install_path": os.path.expanduser("~/papaframe")},
+    {"name": "PapaStreams", "port": 3000, "install_path": os.path.expanduser("~/papastreams")},
 ]
 
 def format_uptime(secs):
