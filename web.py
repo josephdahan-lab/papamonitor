@@ -233,7 +233,7 @@ WATCHED_SERVICES = [
     {"name": "PapaMonitor", "port": 8088, "self": True},
     {"name": "PapaStuff",   "port": 80,   "install_path": os.path.expanduser("~/papastuff")},
     {"name": "PapaFrame",   "port": 8000, "install_path": os.path.expanduser("~/papaframe")},
-    {"name": "PapaStreams", "port": 3000, "install_path": os.path.expanduser("~/papastreams")},
+    {"name": "PapaStreams", "port": 3000, "install_paths": [os.path.expanduser("~/papastreams"), os.path.expanduser("~/vscode/papastreams")]},
 ]
 
 def format_uptime(secs):
@@ -260,8 +260,13 @@ def get_service_status():
             services.append(entry)
             continue
 
-        install_path = svc.get("install_path")
-        if install_path and not os.path.exists(install_path):
+        install_paths = svc.get("install_paths", [])
+        if not install_paths:
+            p = svc.get("install_path")
+            if p:
+                install_paths = [p]
+        installed = not install_paths or any(os.path.exists(p) for p in install_paths)
+        if not installed:
             entry["status"] = "n/a"
             entry["uptime"] = "—"
             entry["pid"] = "—"
