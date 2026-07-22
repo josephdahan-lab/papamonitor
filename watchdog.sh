@@ -17,8 +17,8 @@ SERVICES=(
     "immich|2283|cd /home/joseph/immich-app && sudo docker compose up -d"
     "papabackup|9999|cd /home/joseph/papabackup && nohup python3 app.py > /tmp/papabackup.log 2>&1 &"
     "papamonitor|8088|cd /home/joseph/monitor && nohup python3 web.py > /home/joseph/monitor/web.log 2>&1 &"
-    "papastuff|80|cd /home/joseph/papastuff && nohup bash start.sh > /home/joseph/papastuff/papastuff.log 2>&1 &"
-    "papastreams|3000|cd /home/joseph/papastreams && nohup bash start.sh > /home/joseph/papastreams/papastreams.log 2>&1 &"
+    "papastuff|80|sudo systemctl restart papastuff.service"
+    "papastreams|3000|sudo systemctl restart papastreams.service"
 )
 
 MAX_RETRIES=2

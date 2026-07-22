@@ -210,6 +210,10 @@ papamonitor/
 
 ## Changelog
 
+### v2.2 (2026-07-22)
+- Watchdog now restarts PapaStuff and PapaStreams via `systemctl restart` instead of spawning background processes (fixes cgroup kill issue where systemd killed restarted services when the watchdog oneshot exited)
+- Removed broken standalone `papastream-watchdog.service` (wrong path, pgrep pattern didn't match after `exec`)
+
 ### v2.1 (2026-07-09)
 - Added PapaStreams service monitoring (port 3000)
 - Service names are clickable links to their web UI
