@@ -19,6 +19,7 @@ SERVICES=(
     "papamonitor|8088|cd /home/joseph/monitor && nohup python3 web.py > /home/joseph/monitor/web.log 2>&1 &"
     "papastuff|80|sudo systemctl restart papastuff.service"
     "papastreams|3000|sudo systemctl restart papastreams.service"
+    "papabookmarks|6001|sudo systemctl restart papabookmarks.service"
 )
 
 MAX_RETRIES=2

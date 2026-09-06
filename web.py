@@ -228,12 +228,13 @@ def get_boots():
 
 WATCHED_SERVICES = [
     {"name": "Jellyfin",    "port": 8096, "container": "jellyfin",      "install_path": os.path.expanduser("~/jellyfin")},
-    {"name": "Immich",      "port": 2283, "container": "immich_server", "install_path": os.path.expanduser("~/immich-app")},
+    {"name": "Immich",      "port": 2283, "container": "immich_server", "health": "/api/server/ping", "install_path": os.path.expanduser("~/immich-app")},
     {"name": "PapaBackup",  "port": 9999, "install_path": os.path.expanduser("~/papabackup")},
     {"name": "PapaMonitor", "port": 8088, "self": True},
     {"name": "PapaStuff",   "port": 80,   "install_path": os.path.expanduser("~/papastuff")},
     {"name": "PapaFrame",   "port": 8000, "install_path": os.path.expanduser("~/papaframe")},
     {"name": "PapaStreams", "port": 3000, "install_path": os.path.expanduser("~/papastreams")},
+    {"name": "PapaBookmarks", "port": 6001, "install_path": os.path.expanduser("~/papabookmarks")},
 ]
 
 def format_uptime(secs):
@@ -274,7 +275,7 @@ def get_service_status():
             continue
 
         try:
-            req = urllib.request.urlopen(f"http://localhost:{svc['port']}/", timeout=5)
+            req = urllib.request.urlopen(f"http://localhost:{svc['port']}{svc.get('health','/')}", timeout=5)
             entry["status"] = "up"
         except Exception:
             entry["status"] = "down"

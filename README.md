@@ -173,6 +173,7 @@ The dashboard tracks status and uptime for these services:
 | PapaMonitor | 8088 | Python |
 | PapaStuff | 80 | Node.js |
 | PapaStreams | 3000 | Node.js |
+| PapaBookmarks | 6001 | Node.js |
 | PapaFrame | 8000 | N/A (not on all hosts) |
 
 ## Service Watchdog
@@ -209,6 +210,10 @@ papamonitor/
 ```
 
 ## Changelog
+
+### v2.3 (2026-09-06)
+- Added PapaBookmarks service monitoring (port 6001)
+- Immich health check now uses `/api/server/ping` instead of `/`
 
 ### v2.2 (2026-07-22)
 - Watchdog now restarts PapaStuff and PapaStreams via `systemctl restart` instead of spawning background processes (fixes cgroup kill issue where systemd killed restarted services when the watchdog oneshot exited)
