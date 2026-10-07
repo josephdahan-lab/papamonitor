@@ -5,4 +5,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 User=joseph
+Environment=HOME=/home/joseph
 ExecStart=/home/joseph/monitor/watchdog.sh
+# Worst case: every service down, 2 retries x 30s grace each.
+TimeoutStartSec=15min

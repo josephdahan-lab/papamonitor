@@ -6,3 +6,6 @@ state/
 __pycache__/
 *.pyc
 .msmtp.log
+monitor.log.*
+watchdog.log
+*.bak.*

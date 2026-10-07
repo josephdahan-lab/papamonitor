@@ -54,12 +54,12 @@ sed "s|/home/joseph/monitor|$REPO_DIR|g; s|/home/joseph/papaframe|$TARGET_HOME/p
 
 # ── 4. Install systemd units ──────────────────────────────────────────────
 echo "[4/5] Installing systemd units..."
-for unit in papamonitor.service papamonitor-web.service papamonitor-boot-check.service; do
+for unit in papamonitor.service papamonitor-web.service papamonitor-boot-check.service papawatchdog.service papawatchdog.timer; do
     sed "s|/home/joseph/monitor|$REPO_DIR|g; s|User=joseph|User=$TARGET_USER|g; s|crontab -u joseph|crontab -u $TARGET_USER|g; s|HOME=/home/joseph|HOME=$TARGET_HOME|g" \
         "$REPO_DIR/$unit" > "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
-systemctl enable --now papamonitor papamonitor-web papamonitor-boot-check
+systemctl enable --now papamonitor papamonitor-web papamonitor-boot-check papawatchdog.timer
 # boot-check is one-shot — re-run it now so the current boot gets classified
 # without waiting for the next reboot.
 systemctl start papamonitor-boot-check || true

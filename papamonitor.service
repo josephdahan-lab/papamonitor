@@ -8,9 +8,10 @@ User=joseph
 Environment=HOME=/home/joseph
 WorkingDirectory=/home/joseph/monitor
 ExecStart=/bin/bash /home/joseph/monitor/monitor.sh
-# WiFi watchdog needs CAP_NET_ADMIN to bring wlan0 down/up.
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+# WiFi watchdog needs CAP_NET_ADMIN to bring wlan0 down/up; ping needs
+# CAP_NET_RAW (its file capability is masked by the bounding set otherwise).
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 Restart=always
 RestartSec=10
 StandardOutput=append:/home/joseph/monitor/monitor-service.log

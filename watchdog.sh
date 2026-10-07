@@ -11,37 +11,53 @@ WATCHDOG_LOG="$SCRIPT_DIR/watchdog.log"
 STATEDIR="${STATEDIR:-$SCRIPT_DIR/state}"
 mkdir -p "$STATEDIR"
 
-# Service definitions: name|port|restart_command
+# Service definitions: name|port|health_path|install_path|restart_command
+# Services whose install_path doesn't exist are skipped, so the same list
+# works on every host (empty install_path = always check). The health path
+# should be a cheap endpoint that returns 2xx/3xx when the app is really up
+# (immich's container keeps port 2283 bound by docker-proxy even when the
+# API worker inside is dead, so it needs the real ping endpoint).
 SERVICES=(
-    "jellyfin|8096|sudo docker restart jellyfin"
-    "immich|2283|cd /home/joseph/immich-app && sudo docker compose up -d"
-    "papabackup|9999|cd /home/joseph/papabackup && nohup python3 app.py > /tmp/papabackup.log 2>&1 &"
-    "papamonitor|8088|cd /home/joseph/monitor && nohup python3 web.py > /home/joseph/monitor/web.log 2>&1 &"
-    "papastuff|80|sudo systemctl restart papastuff.service"
-    "papastreams|3000|sudo systemctl restart papastreams.service"
-    "papabookmarks|6001|sudo systemctl restart papabookmarks.service"
+    "jellyfin|8096|/health|/usr/lib/jellyfin|sudo systemctl restart jellyfin.service"
+    "immich|2283|/api/server/ping|/home/joseph/immich-app|sudo docker restart immich_server || (cd /home/joseph/immich-app && sudo docker compose up -d)"
+    "papabackup|9999|/|/home/joseph/papabackup|cd /home/joseph/papabackup && nohup python3 app.py > /tmp/papabackup.log 2>&1 &"
+    "papamonitor|8088|/api/config||sudo systemctl restart papamonitor-web.service"
+    "papastuff|80|/|/home/joseph/papastuff|sudo systemctl restart papastuff.service"
+    "papastreams|3000|/|/home/joseph/papastreams|sudo systemctl restart papastreams.service"
+    "papabookmarks|6001|/|/home/joseph/papabookmarks|sudo systemctl restart papabookmarks.service"
 )
 
 MAX_RETRIES=2
-CHECK_TIMEOUT=5
+# web.py is single-threaded and /api/stats can take several seconds, so
+# give services a bit of slack before declaring them down.
+CHECK_TIMEOUT=10
+# Time to wait after a restart before re-checking (immich takes ~30s to boot).
+RESTART_GRACE=30
 
 log() {
     echo "$(date '+%F %T') | $1" >> "$WATCHDOG_LOG"
 }
 
 check_service() {
-    local name="$1"
-    local port="$2"
-    curl -sf --max-time "$CHECK_TIMEOUT" -o /dev/null "http://localhost:${port}/" 2>/dev/null
-    return $?
+    local port="$1"
+    local path="$2"
+    curl -sf --max-time "$CHECK_TIMEOUT" -o /dev/null "http://localhost:${port}${path}" 2>/dev/null
 }
 
 restart_service() {
     local name="$1"
     local cmd="$2"
+    local port="$3"
+    local path="$4"
     log "RESTART: attempting to restart $name"
     eval "$cmd" >> "$WATCHDOG_LOG" 2>&1
-    sleep 5
+    # Poll rather than sleep a fixed time so fast services recover quickly.
+    local waited=0
+    while (( waited < RESTART_GRACE )); do
+        sleep 5
+        waited=$((waited + 5))
+        check_service "$port" "$path" && return
+    done
 }
 
 alert_service_down() {
@@ -70,9 +86,13 @@ log "=== Watchdog check started ==="
 all_ok=true
 
 for entry in "${SERVICES[@]}"; do
-    IFS='|' read -r name port restart_cmd <<< "$entry"
+    IFS='|' read -r name port path install_path restart_cmd <<< "$entry"
 
-    if check_service "$name" "$port"; then
+    if [[ -n "$install_path" && ! -e "$install_path" ]]; then
+        continue
+    fi
+
+    if check_service "$port" "$path"; then
         continue
     fi
 
@@ -81,9 +101,9 @@ for entry in "${SERVICES[@]}"; do
 
     for attempt in $(seq 1 $MAX_RETRIES); do
         log "Attempt $attempt/$MAX_RETRIES to restart $name"
-        restart_service "$name" "$restart_cmd"
+        restart_service "$name" "$restart_cmd" "$port" "$path"
 
-        if check_service "$name" "$port"; then
+        if check_service "$port" "$path"; then
             log "OK: $name recovered after attempt $attempt"
             # Clear any previous alert cooldown on recovery
             rm -f "$STATEDIR/watchdog_${name}"
@@ -92,7 +112,7 @@ for entry in "${SERVICES[@]}"; do
         fi
     done
 
-    if ! check_service "$name" "$port"; then
+    if ! check_service "$port" "$path"; then
         log "FAILED: $name could not be restored after $MAX_RETRIES attempts"
         alert_service_down "$name"
     fi

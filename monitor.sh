@@ -49,6 +49,9 @@ get_wifi_iface() {
     for iface in /sys/class/net/*; do
         [ -d "$iface/wireless" ] && { basename "$iface"; return; }
     done
+    # No wireless iface: return success so `x=$(get_wifi_iface)` doesn't
+    # trip `set -e` on ethernet-only hosts.
+    return 0
 }
 
 get_wifi() {
@@ -166,8 +169,8 @@ while true; do
             "wifi_warn"
     fi
 
-    # --- service watchdog ---
-    "$SCRIPT_DIR/watchdog.sh" &
+    # Service watchdog runs from papawatchdog.timer, not here: this unit's
+    # capability bounding set blocks sudo, so restarts would always fail.
 
     # --- connectivity watchdog ---
     # If the router stops answering and we have a wireless interface, cycle

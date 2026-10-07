@@ -178,13 +178,13 @@ The dashboard tracks status and uptime for these services:
 
 ## Service Watchdog
 
-The watchdog (`watchdog.sh`) runs every 2 minutes via systemd timer and on each monitor loop. For each service it:
+The watchdog (`watchdog.sh`) runs every 2 minutes via `papawatchdog.timer` (it is not called from `monitor.sh`: that unit's capability bounding set blocks `sudo`, so restarts would fail). For each service it:
 
-1. Checks HTTP response on the service port
+1. Skips services whose install path is missing on this host, then checks the HTTP health endpoint
 2. If down, attempts restart (up to 2 retries)
 3. Sends email alert if recovery fails
 
-Install the timer:
+`setup.sh` installs the timer; to install it by hand:
 ```bash
 sudo cp papawatchdog.service papawatchdog.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -210,6 +210,12 @@ papamonitor/
 ```
 
 ## Changelog
+
+### v2.4 (2026-10-07)
+- Fix crash loop on ethernet-only hosts: `get_wifi_iface` returned non-zero with no wireless interface, which tripped `set -e` and made `monitor.sh` exit on every start (Sep 27 – Oct 2 on precision)
+- Service watchdog runs only from `papawatchdog.timer` (the monitor unit's capability bounding set blocks `sudo`, so restarts from `monitor.sh` always failed); `setup.sh` now installs the timer
+- Watchdog checks each service's health endpoint, skips services not installed on the host, and polls up to 30s after a restart; Jellyfin restarts via systemd
+- `papamonitor.service` grants `CAP_NET_RAW` so `ping` works under the bounding set
 
 ### v2.3 (2026-09-06)
 - Added PapaBookmarks service monitoring (port 6001)
