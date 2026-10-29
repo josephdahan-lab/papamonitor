@@ -20,7 +20,7 @@ mkdir -p "$STATEDIR"
 SERVICES=(
     "jellyfin|8096|/health|/usr/lib/jellyfin|sudo systemctl restart jellyfin.service"
     "immich|2283|/api/server/ping|/home/joseph/immich-app|sudo docker restart immich_server || (cd /home/joseph/immich-app && sudo docker compose up -d)"
-    "papabackup|9999|/|/home/joseph/papabackup|cd /home/joseph/papabackup && nohup python3 app.py > /tmp/papabackup.log 2>&1 &"
+    "papabackup|9999|/|/home/joseph/papabackup|sudo systemctl restart papabackup.service"
     "papamonitor|8088|/api/config||sudo systemctl restart papamonitor-web.service"
     "papastuff|80|/|/home/joseph/papastuff|sudo systemctl restart papastuff.service"
     "papastreams|3000|/|/home/joseph/papastreams|sudo systemctl restart papastreams.service"
