@@ -27,6 +27,15 @@ SERVICES=(
     "papabookmarks|6001|/|/home/joseph/papabookmarks|sudo systemctl restart papabookmarks.service"
 )
 
+# Host-specific services from monitor.conf: EXTRA_SERVICES="name|port|path|cmd;..."
+IFS=';' read -ra _extra <<< "${EXTRA_SERVICES:-}"
+for _e in "${_extra[@]}"; do
+    IFS='|' read -r _n _p _h _r <<< "$_e"
+    _n="${_n//[[:space:]]/}"; _p="${_p//[[:space:]]/}"; _h="${_h//[[:space:]]/}"
+    [[ -z "$_n" || ! "$_p" =~ ^[0-9]+$ ]] && continue
+    SERVICES+=("$_n|$_p|${_h:-/}||$_r")
+done
+
 MAX_RETRIES=2
 # web.py is single-threaded and /api/stats can take several seconds, so
 # give services a bit of slack before declaring them down.
@@ -98,6 +107,12 @@ for entry in "${SERVICES[@]}"; do
 
     all_ok=false
     log "DOWN: $name (port $port) is not responding"
+
+    if [[ -z "$restart_cmd" ]]; then
+        log "FAILED: $name has no restart command, alerting only"
+        alert_service_down "$name"
+        continue
+    fi
 
     for attempt in $(seq 1 $MAX_RETRIES); do
         log "Attempt $attempt/$MAX_RETRIES to restart $name"

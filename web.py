@@ -247,10 +247,22 @@ def format_uptime(secs):
         return f"{hours}h {mins}m"
     return f"{mins}m"
 
+def extra_services():
+    """Host-specific services from EXTRA_SERVICES in monitor.conf:
+    "name|port|health_path|restart_cmd;..." (restart_cmd is the watchdog's)."""
+    out = []
+    for item in read_config().get("EXTRA_SERVICES", "").split(";"):
+        parts = [p.strip() for p in item.split("|")]
+        if len(parts) < 2 or not parts[0] or not parts[1].isdigit():
+            continue
+        health = parts[2] if len(parts) > 2 and parts[2] else "/"
+        out.append({"name": parts[0], "port": int(parts[1]), "health": health})
+    return out
+
 def get_service_status():
     import urllib.request
     services = []
-    for svc in WATCHED_SERVICES:
+    for svc in WATCHED_SERVICES + extra_services():
         entry = {"name": svc["name"], "port": svc["port"]}
         if svc.get("self"):
             entry["status"] = "up"

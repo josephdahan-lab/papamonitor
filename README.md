@@ -98,6 +98,7 @@ nano monitor.conf
 | `CPU_LOAD_WARN` | 0.9 | Load average per core |
 | `WIFI_WARN` | -75 dBm | WiFi signal alert |
 | `INTERVAL` | 60s | Polling interval |
+| `EXTRA_SERVICES` | empty | Services specific to this host, `name\|port\|health_path\|restart_command` separated by `;`. Shown on the dashboard and checked by the watchdog; with no restart command it only alerts |
 | `EMAIL_TO` | admin@dahan.fr | Alert recipient (**change this**) |
 
 All settings can also be changed live from the web dashboard's Settings card.
@@ -210,6 +211,9 @@ papamonitor/
 ```
 
 ## Changelog
+
+### v2.5 (2026-11-21)
+- New `EXTRA_SERVICES` setting in `monitor.conf` for services that only exist on one host (e.g. MaxiStreams on maxistreams). They appear on the dashboard and the watchdog checks them; without a restart command it alerts instead of restarting
 
 ### v2.4 (2026-10-07)
 - Fix crash loop on ethernet-only hosts: `get_wifi_iface` returned non-zero with no wireless interface, which tripped `set -e` and made `monitor.sh` exit on every start (Sep 27 – Oct 2 on precision)
