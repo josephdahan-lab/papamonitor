@@ -98,7 +98,7 @@ nano monitor.conf
 | `CPU_LOAD_WARN` | 0.9 | Load average per core |
 | `WIFI_WARN` | -75 dBm | WiFi signal alert |
 | `INTERVAL` | 60s | Polling interval |
-| `EXTRA_SERVICES` | empty | Services specific to this host, `name\|port\|health_path\|restart_command` separated by `;`. Shown on the dashboard and checked by the watchdog; with no restart command it only alerts |
+| `EXTRA_SERVICES` | empty | Services specific to this host, `name\|[host:]port\|health_path\|restart_command` separated by `;`. Shown on the dashboard and checked by the watchdog; with no restart command it only alerts. With `host:port` the service is on another machine and is only alerted on (e.g. `MaxiStreams\|maxistreams:80\|/` on precision) |
 | `EMAIL_TO` | admin@dahan.fr | Alert recipient (**change this**) |
 
 All settings can also be changed live from the web dashboard's Settings card.
@@ -211,6 +211,9 @@ papamonitor/
 ```
 
 ## Changelog
+
+### v2.6 (2026-11-24)
+- `EXTRA_SERVICES` accepts `host:port` to watch a service on another machine, e.g. `MaxiStreams|maxistreams:80|/` on precision. The dashboard links to that host and shows no PID or uptime; the watchdog alerts only, after waiting 30s for the other host's own watchdog to restart it
 
 ### v2.5 (2026-11-21)
 - New `EXTRA_SERVICES` setting in `monitor.conf` for services that only exist on one host (e.g. MaxiStreams on maxistreams). They appear on the dashboard and the watchdog checks them; without a restart command it alerts instead of restarting

@@ -27,12 +27,16 @@ SERVICES=(
     "papabookmarks|6001|/|/home/joseph/papabookmarks|sudo systemctl restart papabookmarks.service"
 )
 
-# Host-specific services from monitor.conf: EXTRA_SERVICES="name|port|path|cmd;..."
+# Host-specific services from monitor.conf:
+#   EXTRA_SERVICES="name|[host:]port|path|cmd;..."
+# A service on another host is only checked and alerted on: its own host's
+# watchdog is the one that restarts it, so any restart command is ignored.
 IFS=';' read -ra _extra <<< "${EXTRA_SERVICES:-}"
 for _e in "${_extra[@]}"; do
     IFS='|' read -r _n _p _h _r <<< "$_e"
     _n="${_n//[[:space:]]/}"; _p="${_p//[[:space:]]/}"; _h="${_h//[[:space:]]/}"
-    [[ -z "$_n" || ! "$_p" =~ ^[0-9]+$ ]] && continue
+    [[ -z "$_n" || ! "$_p" =~ ^([A-Za-z0-9._-]+:)?[0-9]+$ ]] && continue
+    [[ "$_p" == *:* ]] && _r=""
     SERVICES+=("$_n|$_p|${_h:-/}||$_r")
 done
 
@@ -48,9 +52,10 @@ log() {
 }
 
 check_service() {
-    local port="$1"
+    local port="$1"   # "port" for this host, or "host:port" for another one
     local path="$2"
-    curl -sf --max-time "$CHECK_TIMEOUT" -o /dev/null "http://localhost:${port}${path}" 2>/dev/null
+    [[ "$port" == *:* ]] || port="localhost:${port}"
+    curl -sf --max-time "$CHECK_TIMEOUT" -o /dev/null "http://${port}${path}" 2>/dev/null
 }
 
 restart_service() {
@@ -109,6 +114,16 @@ for entry in "${SERVICES[@]}"; do
     log "DOWN: $name (port $port) is not responding"
 
     if [[ -z "$restart_cmd" ]]; then
+        # Give a remote host's own watchdog time to bring it back first.
+        if [[ "$port" == *:* ]]; then
+            sleep "$RESTART_GRACE"
+            if check_service "$port" "$path"; then
+                log "OK: $name came back on its own"
+                rm -f "$STATEDIR/watchdog_${name}"
+                all_ok=true
+                continue
+            fi
+        fi
         log "FAILED: $name has no restart command, alerting only"
         alert_service_down "$name"
         continue

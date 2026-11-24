@@ -249,14 +249,22 @@ def format_uptime(secs):
 
 def extra_services():
     """Host-specific services from EXTRA_SERVICES in monitor.conf:
-    "name|port|health_path|restart_cmd;..." (restart_cmd is the watchdog's)."""
+    "name|[host:]port|health_path|restart_cmd;..." (restart_cmd is the
+    watchdog's). With a host, the service lives on another machine: it is
+    checked over the network and shown without a PID or uptime."""
     out = []
     for item in read_config().get("EXTRA_SERVICES", "").split(";"):
         parts = [p.strip() for p in item.split("|")]
-        if len(parts) < 2 or not parts[0] or not parts[1].isdigit():
+        if len(parts) < 2 or not parts[0]:
+            continue
+        host, _, port = parts[1].rpartition(":")
+        if not port.isdigit():
             continue
         health = parts[2] if len(parts) > 2 and parts[2] else "/"
-        out.append({"name": parts[0], "port": int(parts[1]), "health": health})
+        svc = {"name": parts[0], "port": int(port), "health": health}
+        if host:
+            svc["host"] = host
+        out.append(svc)
     return out
 
 def get_service_status():
@@ -264,6 +272,8 @@ def get_service_status():
     services = []
     for svc in WATCHED_SERVICES + extra_services():
         entry = {"name": svc["name"], "port": svc["port"]}
+        if svc.get("host"):
+            entry["host"] = svc["host"]
         if svc.get("self"):
             entry["status"] = "up"
             pid = str(os.getpid())
@@ -287,13 +297,17 @@ def get_service_status():
             continue
 
         try:
-            req = urllib.request.urlopen(f"http://localhost:{svc['port']}{svc.get('health','/')}", timeout=5)
+            req = urllib.request.urlopen(f"http://{svc.get('host', 'localhost')}:{svc['port']}{svc.get('health','/')}", timeout=5)
             entry["status"] = "up"
         except Exception:
             entry["status"] = "down"
 
         container = svc.get("container")
-        if container:
+        if svc.get("host"):
+            # Remote service: no local process to inspect.
+            entry["uptime"] = "—"
+            entry["pid"] = "remote"
+        elif container:
             uptime_raw = run_cmd(
                 "sudo docker inspect -f '{{.State.StartedAt}}' " + container + " 2>/dev/null"
             ).strip()
@@ -666,12 +680,12 @@ async function refresh() {
       else badge = '<span class="badge badge-crit">DOWN</span>';
       let nameCell;
       if (s.status === 'up') {
-        const url = 'http://' + host + (s.port === 80 ? '' : ':' + s.port) + '/';
+        const url = 'http://' + (s.host || host) + (s.port === 80 ? '' : ':' + s.port) + '/';
         nameCell = '<a href="' + url + '" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">' + s.name + '</a>';
       } else {
         nameCell = '<span style="font-weight:600;">' + s.name + '</span>';
       }
-      shtml += '<tr><td>' + nameCell + '</td><td>' + s.port + '</td><td>' + badge + '</td><td>' + (s.pid || '—') + '</td><td>' + (s.uptime || '—') + '</td></tr>';
+      shtml += '<tr><td>' + nameCell + '</td><td>' + (s.host ? s.host + ':' : '') + s.port + '</td><td>' + badge + '</td><td>' + (s.pid || '—') + '</td><td>' + (s.uptime || '—') + '</td></tr>';
     }
     document.getElementById('services').innerHTML = shtml;
 
